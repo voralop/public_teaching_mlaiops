@@ -1,32 +1,34 @@
 import subprocess
-from cloudlayer.base import CloudAdapter
+from google.cloud import storage
 
+class GcpAdapter:
+    def __init__(self, config):
+        self.config = config
 
-class GcpAdapter(CloudAdapter):
-    def upload(self, local_path: str, key: str) -> str:
-        raise NotImplementedError("TODO Lab 1: blob.upload_from_filename, return the gs:// URI")
+    def _get_attr(self, key: str) -> str:
+        return getattr(self.config, key.lower(), getattr(self.config, key.upper(), ""))
 
-    def download(self, uri: str, local_path: str) -> None:
-        raise NotImplementedError("TODO Lab 1: blob.download_to_filename, creating parents")
+    def upload(self, local_path: str, remote_uri: str) -> None:
+        parts = remote_uri.replace("gs://", "").split("/")
+        bucket_name = parts[0]
+        blob_path = "/".join(parts[1:])
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+        blob.upload_from_filename(local_path)
 
-    def push_image(self, local_tag: str) -> str:
-        # 1. ดึง registry จาก self.cfg
-        registry = getattr(self.cfg, "container_registry", getattr(self.cfg, "registry", ""))
-        remote_tag = f"{registry}/{local_tag}"
+    def download(self, remote_uri: str, local_path: str) -> None:
+        parts = remote_uri.replace("gs://", "").split("/")
+        bucket_name = parts[0]
+        blob_path = "/".join(parts[1:])
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+        blob.download_to_filename(local_path)
 
-        # 2. Tag Image
+    def push_image(self, local_tag: str) -> None:
+        registry = self._get_attr("container_registry")
+        tag_suffix = local_tag.split(":")[-1] if ":" in local_tag else "latest"
+        remote_tag = f"{registry}:{tag_suffix}"
         subprocess.run(["docker", "tag", local_tag, remote_tag], check=True)
-
-        # 3. Authenticate Docker กับ GCP
-        hostname = remote_tag.split("/")[0]
-        subprocess.run(["gcloud", "auth", "configure-docker", hostname, "--quiet"], check=True)
-
-        # 4. Push Image ขึ้น Cloud Registry
         subprocess.run(["docker", "push", remote_tag], check=True)
-
-        # 5. ดึง digest sha256 และส่งค่ากลับ
-        result = subprocess.run(
-            ["docker", "inspect", "--format={{index .RepoDigests 0}}", remote_tag],
-            capture_output=True, text=True, check=True
-        )
-        return result.stdout.strip()

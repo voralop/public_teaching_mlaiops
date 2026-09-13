@@ -1,4 +1,4 @@
 [core]
     remote = storage
 ['remote "storage"']
-    url = gs://itcs355-6688045/itcs355/dvc
+    url = gs://itcs355-6688045/dvc
